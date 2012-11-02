@@ -38,19 +38,38 @@ def makeWikipediaRequest(title):
 
   pages = text["query"]["pages"]
   page = pages.values()[0]
-  revisions = page["revisions"]
-  data = revisions[0]
-  text = data["*"]
+  if "missing" not in page:
+    revisions = page["revisions"]
+    data = revisions[0]
+    text = data["*"]
+  else:
+    text = None
 
   return text
 
 def parseWikiLink(link):
-  contents = re.sub(r'.*\[\[(.*)\]\].*', r'\1', link).strip()
-  parts = contents.split('|')
-  return parts[0]
+  retval = ""
+  if re.match('.*\[\[.*\]\].*', link):
+    contents = re.sub(r'.*\[\[(.*)\]\].*', r'\1', link).strip()
+    parts = contents.split('|')
+    retval = parts[0]
+  elif re.match('.*\[.*\].*', link):
+    contents = re.sub(r'.*\[(.*)\].*', r'\1', link).strip()
+    retval = contents[contents.index(" "):].strip()
+  else:
+    retval = re.sub(r'\(.*\)', '', link).strip()
+  return retval
+
+def getMostRecentCompany(text):
+  companies = text.split("<br />")
+  return parseWikiLink(companies[-1])
 
 def getOwner(title):
+  print "Getting owner of: " + title
+
   text = makeWikipediaRequest(title)
+  if text == None:
+    return (title, [title])
 
   inInfobox = False
 
@@ -70,17 +89,18 @@ def getOwner(title):
   else:
     for line in text.splitlines():
       line = line.strip()
-      if re.search("^[ ]*\|[ ]*((current|)owner|company|parent)[ ]*=", line):
+      if re.search("^[ ]*\|[ ]*((current|)owner|company|parent|developer)[ ]*=", line):
         parts = line.split("=")
-        name = parseWikiLink(parts[1])
+        name = getMostRecentCompany(parts[1])
         if name != "":
           owner, path = getOwner(name)
-          companies[title] = owner
+          companies[title] = name
           path.append(title)
           return (owner, path)
-      if re.search("^[ ]*#(redirect|Redirect|REDIRECT) (\[\[.*\]\])", line):
-        link = line[line.index(" "):]
+      if re.search("^[ ]*#(redirect|Redirect|REDIRECT)[ ]*(\[\[.*\]\])", line):
+        link = line[line.index("[")-1:]
         redirect = parseWikiLink(link)
+        companies[title] = redirect
         return getOwner(redirect)
   return (title, [title])
 
